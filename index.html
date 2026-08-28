@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>颈椎飞行员</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <style>
@@ -262,7 +263,6 @@ create:function(){
   SC=this;var sc=this;
   var W=sc.scale.width,H=sc.scale.height;
   sc.cam=sc.cameras.main;
-  try{sc.cam.postFX.addVignette(0.5,0.5,0.92,0.32);}catch(e){}
   // 发光贴图
   var gsize=128, gcan=sc.textures.createCanvas('glow',gsize,gsize);
   var gctx=gcan.getContext();
@@ -739,10 +739,17 @@ function bindButtons(sc){
   $('btnMenu').onclick=function(){$('ovEnd').style.display='none';
     $('ovStart').style.display='flex';MENU=true;};}
 
-new Phaser.Game({type:Phaser.AUTO,parent:'game',
+function vw(){return Math.max(2,window.innerWidth||document.documentElement.clientWidth||360);}
+function vh(){return Math.max(2,window.innerHeight||document.documentElement.clientHeight||640);}
+var game=new Phaser.Game({type:Phaser.AUTO,parent:'game',
   backgroundColor:'#cfe3ea',
-  scale:{mode:Phaser.Scale.RESIZE,width:window.innerWidth,height:window.innerHeight},
+  width:vw(),height:vh(),
+  scale:{mode:Phaser.Scale.NONE},
   render:{antialias:true},
   scene:Main});
+function doResize(){try{game.scale.resize(vw(),vh());}catch(e){}}
+window.addEventListener('resize',doResize);
+window.addEventListener('orientationchange',function(){setTimeout(doResize,120);});
+setTimeout(doResize,60);
 })();
 </script>
