@@ -54,6 +54,19 @@
     padding:3px 0; color:var(--ink-soft);}
   .stats-card .row b{color:var(--ink); font-variant-numeric:tabular-nums;}
   #sensorTip{font-size:12px; color:var(--accent); font-weight:800; min-height:1.2em;}
+  /* 封面动效 */
+  #ovStart{background:linear-gradient(180deg, rgba(191,221,228,.42), rgba(246,227,210,.58));}
+  #ovStart h1{animation:tfloat 3s ease-in-out infinite;}
+  @keyframes tfloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+  #btnGyro{animation:pulse 1.8s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 6px 18px rgba(91,124,153,.35);}
+    50%{box-shadow:0 6px 26px rgba(91,124,153,.6), 0 0 0 7px rgba(91,124,153,.1);}}
+  #ovStart .lv{animation:chipin .5s ease-out backwards;}
+  @media (prefers-reduced-motion: reduce){#ovStart h1,#btnGyro,#ovStart .lv{animation:none;}}
+  @keyframes chipin{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+  #feverbar{position:fixed; top:5px; left:0; height:4px; width:0%; z-index:6;
+    background:linear-gradient(90deg,#ff8db2,#ffd75e); border-radius:0 3px 3px 0;
+    transition:width .15s linear;}
   #panelToggle{position:fixed; right:10px; bottom:10px; z-index:8; border:0;
     background:var(--panel); color:var(--ink-soft); border-radius:999px; padding:7px 14px;
     font-size:11px; font-weight:800; box-shadow:0 2px 10px rgba(58,74,82,.15);
@@ -74,6 +87,7 @@
 
 <canvas id="cv"></canvas>
 <div id="timebar" style="display:none"></div>
+<div id="feverbar" style="display:none"></div>
 <div class="hud" id="hud" style="display:none">
   <div class="stat"><small id="hLvName">第 1 关</small><span id="hHearts">♥♥♥</span></div>
   <div class="stat"><img id="hCoinIcon" alt=""><span id="hScore">0</span></div>
@@ -84,7 +98,7 @@
 <div class="overlay" id="ovStart">
   <img id="logoImg" alt="颈椎飞行员">
   <h1>颈椎飞行员</h1>
-  <p class="sub">倾斜手机控制纸飞机：吃金币、接星星、穿石环、躲小鸟。<br>点「起飞」的瞬间就是你的姿势零点。动作轻柔，感到不适请休息。</p>
+  <p class="sub">倾斜手机控制纸飞机：吃金币、接星星、穿石环、躲小鸟。<br>连击攒满能量条触发 FEVER 金币雨！磁铁吸币、护盾挡伤、擦鸟而过有奖励。<br>点「起飞」的瞬间就是你的姿势零点。动作轻柔，感到不适请休息。</p>
   <div class="levels" id="lvList"></div>
   <div class="btnrow">
     <button class="btn" id="btnGyro">🛫 起飞（体感）</button>
@@ -260,7 +274,9 @@ function sFail(){tone(220,0.4,'sawtooth',0.06);setTimeout(function(){tone(165,0.
 var G={on:false,endless:false,lvI:0,t:0,score:0,spawned:0,rings:0,hearts:3,
   combo:0,maxCombo:0,lastCatch:-9,coins:[],ringObjs:[],birds:[],starObjs:[],
   parts:[],floats:[],trail:[],segI:0,segP:0,spawnAcc:0,ringAcc:0,birdAcc:0,
-  shake:0,intro:0,speed:0.37,lv:LEVELS[0],flashT:0,dmgT:0};
+  shake:0,intro:0,speed:0.37,lv:LEVELS[0],flashT:0,dmgT:0,
+  magnetT:0,shield:false,fever:0,feverOn:0,pickups:[],pickAcc:0,pickN:0};
+var MENU=true, menuCoins=[];
 var SPAWN_Z=1,FOCAL=0.28;
 var skyClouds=[];
 for(var ci=0;ci<5;ci++)skyClouds.push({x:(Math.random()*2-1),y:-0.7+Math.random()*0.9,
@@ -294,13 +310,20 @@ function startGame(m){
   G.coins=[];G.ringObjs=[];G.birds=[];G.starObjs=[];G.parts=[];G.floats=[];G.trail=[];
   G.segI=0;G.segP=0;G.spawnAcc=0;G.ringAcc=0;G.birdAcc=0;
   G.shake=0;G.intro=2.4;G.speed=G.lv.speed;G.flashT=0;G.dmgT=0;
+  G.magnetT=0;G.shield=false;G.fever=0;G.feverOn=0;G.pickups=[];G.pickAcc=0;G.pickN=0;
+  MENU=false;
   ['ovStart','ovWin','ovFail'].forEach(function(id){$(id).style.display='none';});
   $('hud').style.display='flex';$('timebar').style.display='block';
+  $('feverbar').style.display='block';
   $('hLvName').textContent=G.endless?'无尽模式':('第 '+(G.lvI+1)+' 关');
   $('dMode').textContent='mode '+m;}
 
 function heartsStr(){return '♥♥♥'.slice(0,G.hearts)+'♡♡♡'.slice(0,3-G.hearts);}
-function loseHeart(){G.hearts--;G.shake=0.5;G.dmgT=0.5;sHit();
+function loseHeart(){
+  if(G.feverOn>0)return;
+  if(G.shield){G.shield=false;G.flashT=0.25;tone(440,0.2);
+    G.floats.push({x:W/2,y:H*0.5,txt:'🛡️ 护盾抵挡！',l:1});return;}
+  G.hearts--;G.shake=0.5;G.dmgT=0.5;sHit();
   $('hHearts').textContent=heartsStr();}
 
 function endWin(){
@@ -311,6 +334,7 @@ function endWin(){
   if(G.lvI+1>=PROG.unlocked)PROG.unlocked=Math.min(5,G.lvI+2);
   saveProg();
   $('hud').style.display='none';$('timebar').style.display='none';
+  $('feverbar').style.display='none';
   $('winTitle').textContent='第 '+(G.lvI+1)+' 关 · '+G.lv.name+' 完成！';
   $('winStars').textContent='★'.repeat(st)+'☆'.repeat(3-st);
   $('winScore').textContent=G.score+' / '+G.spawned;
@@ -322,6 +346,7 @@ function endWin(){
 function endFail(reason){
   G.on=false;sFail();
   $('hud').style.display='none';$('timebar').style.display='none';
+  $('feverbar').style.display='none';
   if(G.endless){
     if(G.score>PROG.best){PROG.best=G.score;saveProg();}
     $('failText').textContent='无尽模式结束：金币 '+G.score+'（最佳 '+PROG.best+'）· 脖子活动 '+neck.moves+' 次';
@@ -357,7 +382,7 @@ $('btnRetryF').onclick=function(){startGame(mode);};
 $('btnNext').onclick=function(){selLv=Math.min(4,G.lvI+1);startGame(mode);};
 $('btnMenuW').onclick=menu;$('btnMenuF').onclick=menu;
 function menu(){['ovWin','ovFail'].forEach(function(id){$(id).style.display='none';});
-  lvChips();$('ovStart').style.display='flex';}
+  lvChips();$('ovStart').style.display='flex';MENU=true;}
 
 /* ---------- 投影与绘制 ---------- */
 function project(c){var pr=FOCAL/(FOCAL+c.z);
@@ -455,6 +480,15 @@ function loop(now){
     ctx.translate((Math.random()-0.5)*14*G.shake*4,(Math.random()-0.5)*14*G.shake*4);}
   drawBG(dt);
   var px=W/2+fx*W*0.36,py=H*0.62+fy*H*0.24;
+  if(!G.on&&MENU){
+    px=W/2+Math.sin(now/1500)*W*0.2;
+    py=H*0.6+Math.sin(now/1150+1.3)*H*0.06;
+    if(Math.random()<dt*1.5)menuCoins.push({x:Math.random()*1.4-0.7,
+      y:Math.random()*0.9-0.5,z:SPAWN_Z});
+    for(var mc=menuCoins.length-1;mc>=0;mc--){var m=menuCoins[mc];m.z-=0.3*dt;
+      if(m.z<=0.1){menuCoins.splice(mc,1);continue;}
+      drawCoin(project(m),m.z);}
+  }
   if(G.on){
     G.t+=dt;
     if(G.endless)G.speed=G.lv.speed+Math.floor(G.t/10)*0.02;
@@ -463,7 +497,7 @@ function loop(now){
     var patFn=PATTERNS[G.lv.pats[G.segI]];
     // 金币/星星生成
     G.spawnAcc+=dt;
-    if(G.spawnAcc>0.26){G.spawnAcc=0;var pos=patFn(G.segP);
+    if(G.spawnAcc>(G.feverOn>0?0.09:0.26)){G.spawnAcc=0;var pos=patFn(G.segP);
       if(Math.random()<0.06)G.starObjs.push({x:pos.x,y:pos.y,z:SPAWN_Z});
       else{G.coins.push({x:pos.x,y:pos.y,z:SPAWN_Z});G.spawned++;}}
     // 石环生成
@@ -494,12 +528,18 @@ function loop(now){
       drawRing(sR,rg.z);}
     if(!G.on){ctx.restore();requestAnimationFrame(loop);return;}
     // 金币
+    var mtx=fx*0.6545, mty=0.4286+fy*0.5714;
     for(var i=G.coins.length-1;i>=0;i--){var c=G.coins[i];c.z-=G.speed*dt;
+      if(G.magnetT>0&&c.z<0.55){c.x+=(mtx-c.x)*dt*6;c.y+=(mty-c.y)*dt*6;}
       var sC=project(c);
       if(c.z<=0.12){
         var dx=sC.x-px,dy=sC.y-py,rr=Math.min(W,H)*0.09;
         if(dx*dx+dy*dy<rr*rr){
-          G.score++;G.combo=(G.t-G.lastCatch<1.6)?G.combo+1:1;
+          G.score+=(G.feverOn>0?2:1);
+          if(G.feverOn<=0){G.fever=Math.min(1,G.fever+0.09);
+            if(G.fever>=1){G.feverOn=5;G.fever=0;sWin();G.flashT=0.4;
+              G.floats.push({x:W/2,y:H*0.4,txt:'FEVER!! 金币雨',l:1.2});}}
+          G.combo=(G.t-G.lastCatch<1.6)?G.combo+1:1;
           G.maxCombo=Math.max(G.maxCombo,G.combo);G.lastCatch=G.t;
           sCatch(Math.min(G.combo,8));
           G.floats.push({x:sC.x,y:sC.y,txt:G.combo>2?('x'+G.combo):'+1',l:0.8});
@@ -528,9 +568,35 @@ function loop(now){
         if(dx3*dx3+dy3*dy3<rr3*rr3){loseHeart();
           G.floats.push({x:px,y:py-40,txt:'撞鸟 -1 ♥',l:1});
           if(G.hearts<=0){G.birds.splice(bi,1);endFail('被小鸟撞下来了。');break;}}
+        else if(dx3*dx3+dy3*dy3<rr3*rr3*4.8){G.score+=2;
+          G.floats.push({x:sB.x,y:sB.y,txt:'擦身 +2',l:0.9});tone(880,0.1);}
         G.birds.splice(bi,1);continue;}
       drawBird(sB,bd.z,G.t+bd.ph);}
     if(!G.on){ctx.restore();requestAnimationFrame(loop);return;}
+    // 道具与 FEVER
+    G.magnetT=Math.max(0,G.magnetT-dt);
+    if(G.feverOn>0){G.feverOn-=dt;}
+    else G.fever=Math.max(0,G.fever-0.012*dt);
+    if(G.lvI>=1||G.endless){G.pickAcc+=dt;
+      if(G.pickAcc>11){G.pickAcc=0;G.pickN++;
+        G.pickups.push({type:(G.pickN%2?'magnet':'shield'),
+          x:(Math.random()*1.2-0.6),y:(Math.random()*0.8-0.5),z:SPAWN_Z});}}
+    for(var pk=G.pickups.length-1;pk>=0;pk--){var pu=G.pickups[pk];
+      pu.z-=G.speed*dt;
+      var sP=project(pu);
+      if(pu.z<=0.12){
+        var dxp=sP.x-px,dyp=sP.y-py,rrp=Math.min(W,H)*0.1;
+        if(dxp*dxp+dyp*dyp<rrp*rrp){
+          if(pu.type==='magnet'){G.magnetT=6;
+            G.floats.push({x:sP.x,y:sP.y,txt:'🧲 吸币 6 秒',l:1});}
+          else{G.shield=true;
+            G.floats.push({x:sP.x,y:sP.y,txt:'🛡️ 护盾',l:1});}
+          tone(700,0.15);setTimeout(function(){tone(950,0.2);},80);}
+        G.pickups.splice(pk,1);continue;}
+      ctx.globalAlpha=depthAlpha(pu.z);
+      ctx.font=Math.max(14,64*sP.pr)+'px sans-serif';ctx.textAlign='center';
+      ctx.fillText(pu.type==='magnet'?'🧲':'🛡️',sP.x,sP.y);
+      ctx.globalAlpha=1;}
     // 粒子与浮字
     for(var k2=G.parts.length-1;k2>=0;k2--){var p2=G.parts[k2];p2.l-=dt;
       if(p2.l<=0){G.parts.splice(k2,1);continue;}
@@ -556,13 +622,20 @@ function loop(now){
     $('hScore').textContent=G.score;
     $('hMoves').textContent=neck.moves;
     $('hHearts').textContent=heartsStr();
+    $('feverbar').style.width=((G.feverOn>0?(G.feverOn/5):G.fever)*100)+'%';
     if(G.endless){$('hTime').textContent='∞';$('timebar').style.width='100%';}
     else{$('hTime').textContent=Math.max(0,Math.ceil(G.lv.dur-G.t));
       $('timebar').style.width=Math.max(0,(1-G.t/G.lv.dur)*100)+'%';
       if(G.t>=G.lv.dur&&G.on)endTimeUp();}
   }
-  drawPlane(px,py,fx*0.55,now);
+  drawPlane(px,py,G.on?fx*0.55:Math.cos(now/1500)*0.3,now);
+  if(G.on&&G.magnetT>0){ctx.strokeStyle='rgba(232,90,90,0.45)';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(px,py,Math.min(W,H)*0.13+Math.sin(now/150)*4,0,6.283);ctx.stroke();}
+  if(G.on&&G.shield){ctx.font='22px sans-serif';ctx.textAlign='center';
+    ctx.fillText('🛡️',px,py-Math.min(W,H)*0.12);}
   // 全屏反馈
+  if(G.on&&G.feverOn>0){ctx.fillStyle='rgba(255,215,94,'+(0.10+0.06*Math.sin(now/90))+')';
+    ctx.fillRect(0,0,W,H);}
   if(G.flashT>0){G.flashT-=dt;
     ctx.fillStyle='rgba(255,225,150,'+(G.flashT*0.9)+')';ctx.fillRect(0,0,W,H);}
   if(G.dmgT>0){G.dmgT-=dt;
