@@ -247,6 +247,18 @@ var stars=[];for(var si=0;si<40;si++)stars.push([Math.random(),Math.random()*0.7
 var bgClouds=[];for(var bi2=0;bi2<6;bi2++)bgClouds.push({x:Math.random(),y:Math.random(),
   sc:0.5+Math.random()*0.9,sp:0.35+Math.random()*0.5});
 
+/* ===== 颈椎操引导 ===== */
+var GDM=[{k:'lr',name:'左右转头',icon:'↔️',dur:12},
+ {k:'ud',name:'抬头低头',icon:'↕️',dur:12},
+ {k:'cir',name:'绕环画圈',icon:'🔄',dur:12},
+ {k:'free',name:'自由飞行',icon:'🌈',dur:7}];
+var GD={i:0,t:0,gx:0.5,gy:0.62,on:true,inT:0,bonusA:0};
+function guidePos(ta){var gm=GDM[GD.i],tt=GD.t+ta;
+  if(gm.k==='lr')return{x:0.5+0.36*Math.sin(tt*0.85),y:0.62};
+  if(gm.k==='ud')return{x:0.5,y:0.62+0.19*Math.sin(tt*0.85)};
+  if(gm.k==='cir')return{x:0.5+0.30*Math.cos(tt*1.0),y:0.62+0.16*Math.sin(tt*1.0)};
+  return null;}
+
 function scrollSpd(){var ph=phaseAt(G.t);
   var extra=G.t>150?Math.min(0.35,(G.t-150)*0.0045):0;
   return H*0.42*(ph.spd+extra)*(G.slowT>0?0.55:1);}
@@ -259,6 +271,7 @@ function startGame(m){
   G.coinA=0;G.birdA=0;G.mslA=0;G.pickA=0;G.pickN=0;
   G.magnetT=0;G.shield=false;G.slowT=0;G.dblT=0;G.fever=0;G.feverOn=0;
   G.shake=0;G.flashT=0;G.dmgT=0;G.phI=0;G.phBanner=2.2;G.boltT=0;G.wallDone={};
+  GD.i=0;GD.t=0;GD.inT=0;GD.bonusA=0;
   ts=1;tsRec=0;MENU=false;
   skyTop=PH[0].top.slice();skyBot=PH[0].bot.slice();
   $('ovStart').style.display='none';$('ovEnd').style.display='none';
@@ -276,17 +289,19 @@ function gameOver(){
   $('eCoins').textContent=G.coins;
   $('eCombo').textContent=G.maxCombo;
   $('ePhase').textContent=ph.icon+' '+ph.name;
-  $('eMoves').textContent=neck.moves+' 次 ≈ '+(neck.moves*4/60).toFixed(1)+' 分钟颈椎操';
+  $('eMoves').textContent=neck.moves+' 次 · 跟练 '+Math.floor(GD.inT)+'s ≈ '+((neck.moves*4+GD.inT)/60).toFixed(1)+' 分钟颈椎操';
   $('endTitle').textContent=isBest?'🏆 新纪录迫降！':'迫降了！';
   $('best').textContent='最佳距离 '+Math.floor(PROG.best)+'m';
   $('ovEnd').style.display='flex';}
 
 function loseHeart(){
-  if(G.feverOn>0||G.dying>0)return;
+  if(G.feverOn>0||G.dying>0)return 'immune';
   if(G.shield){G.shield=false;G.flashT=0.25;G.flashC='120,200,255';tone(440,0.2);
-    G.floats.push({x:W/2,y:H*0.45,txt:'🛡️ 护盾抵挡！',l:1,big:false});return;}
+    G.floats.push({x:W/2,y:H*0.45,txt:'🛡️ 护盾抵挡！',l:1,big:false});return 'shield';}
   G.hearts--;G.shake=0.6;G.dmgT=0.55;sHit();G.combo=0;
-  if(G.hearts<=0){G.dying=1.3;ts=0.3;}}
+  $('hHearts').textContent='♥♥♥'.slice(0,G.hearts)+'♡♡♡'.slice(0,3-G.hearts);
+  if(G.hearts<=0){G.dying=1.3;ts=0.3;}
+  return 'hit';}
 
 /* ===== 按钮 ===== */
 var tip=$('sensorTip');
@@ -312,7 +327,9 @@ $('btnMenu').onclick=function(){$('ovEnd').style.display='none';
 function spawnCoinFormation(){
   var cs=Math.min(W,H)*0.052;
   var kind=Math.floor(Math.random()*5);
-  var cx=W*(0.18+Math.random()*0.64);
+  var gp=GD.on?guidePos(1.1):null;
+  var cx=gp?clamp(gp.x*W+(Math.random()-0.5)*W*0.12,W*0.12,W*0.88)
+           :W*(0.18+Math.random()*0.64);
   var add=function(x,y){G.objs.push({k:Math.random()<0.04?'star':'coin',
     x:clamp(x,cs,W-cs),y:y});};
   if(kind===0){for(var i=0;i<5;i++)add(cx+(i-2)*cs*2.2,-cs-Math.abs(i-2)*8);}
@@ -403,6 +420,32 @@ function loop(now){
       G.flashT=0.3;G.flashC='255,255,255';
       $('hPhaseName').textContent=ph.icon+' '+ph.name;
       if(nI>=2&&!G.wallDone[nI]){G.wallDone[nI]=true;spawnBirdWall();}}
+    // 颈椎操引导
+    GD.t+=dt;var gm=GDM[GD.i];
+    if(GD.t>gm.dur){GD.t=0;GD.i=(GD.i+1)%GDM.length;gm=GDM[GD.i];
+      G.floats.push({x:W/2,y:H*0.3,txt:gm.icon+' '+gm.name+(gm.k==='free'?'':' · 跟着光圈飞'),l:1.4,big:true});
+      tone(700,0.12);}
+    GD.on=(gm.k!=='free');
+    if(GD.on){
+      var gpNow=guidePos(0);GD.gx=gpNow.x;GD.gy=gpNow.y;
+      var gpx=GD.gx*W,gpy=GD.gy*H;
+      var gin=(px-gpx)*(px-gpx)+(py-gpy)*(py-gpy)<(s*1.25)*(s*1.25);
+      if(gin){GD.inT+=dt;GD.bonusA+=dt;
+        if(GD.bonusA>4){GD.bonusA=0;G.coins+=5;popCoin();tone(760,0.12);
+          G.floats.push({x:px,y:py-60,txt:'跟练 +5',l:0.9,big:false});}}
+      else GD.bonusA=Math.max(0,GD.bonusA-dt*0.5);
+      var gg2=ctx.createRadialGradient(gpx,gpy,0,gpx,gpy,s*1.5);
+      gg2.addColorStop(0,'rgba(120,220,180,'+(gin?0.28:0.16)+')');
+      gg2.addColorStop(1,'rgba(120,220,180,0)');
+      ctx.fillStyle=gg2;ctx.beginPath();ctx.arc(gpx,gpy,s*1.5,0,6.283);ctx.fill();
+      ctx.strokeStyle='rgba(79,157,122,'+(gin?0.9:0.5)+')';ctx.lineWidth=3;
+      ctx.setLineDash([10,8]);ctx.beginPath();ctx.arc(gpx,gpy,s*1.25,0,6.283);ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.textAlign='center';ctx.font='800 15px Nunito,sans-serif';
+      var lbl=gm.icon+' '+gm.name,tw=ctx.measureText(lbl).width+26;
+      ctx.fillStyle='rgba(58,74,82,0.55)';
+      ctx.fillRect(W/2-tw/2,H*0.055,tw,26);
+      ctx.fillStyle='#fff';ctx.fillText(lbl,W/2,H*0.055+18);}
     // 生成
     G.coinA+=dt;var cInt=(G.feverOn>0?0.35:ph.coin);
     if(G.coinA>cInt){G.coinA=0;spawnCoinFormation();}
@@ -453,8 +496,9 @@ function loop(now){
           burst(o.x,o.y,8,'232,169,60');
         }else if(o.k==='star'){G.coins+=10;popCoin();sStar();G.flashT=0.3;G.flashC='255,215,94';
           G.floats.push({x:o.x,y:o.y,txt:'★ +10',l:1,big:false});burst(o.x,o.y,14,'255,215,94');
-        }else if(o.k==='bird'){loseHeart();
-          G.floats.push({x:px,y:py-50,txt:'撞鸟 -1 ♥',l:1,big:false});
+        }else if(o.k==='bird'){var hr=loseHeart();
+          if(hr==='hit')G.floats.push({x:px,y:py-50,txt:'撞鸟 -1 ♥',l:1,big:false});
+          else if(hr==='immune')G.floats.push({x:px,y:py-50,txt:'FEVER 无敌！',l:0.7,big:false});
         }else if(o.k==='magnet'){G.magnetT=6;tone(700,0.15);
           G.floats.push({x:o.x,y:o.y,txt:'🧲 全屏吸币',l:0.9,big:false});
         }else if(o.k==='shield'){G.shield=true;tone(760,0.15);
@@ -490,8 +534,9 @@ function loop(now){
       ctx.fillStyle='#ffd9a0';
       ctx.beginPath();ctx.arc(ms.px+15*ms.dir,myy,8,0,6.283);ctx.fill();
       var dxm=ms.px-px,dym=myy-py;
-      if(dxm*dxm+dym*dym<(hurtR+13)*(hurtR+13)){loseHeart();
-        G.floats.push({x:px,y:py-50,txt:'导弹 -1 ♥',l:1,big:false});
+      if(dxm*dxm+dym*dym<(hurtR+13)*(hurtR+13)){var hr2=loseHeart();
+        if(hr2==='hit')G.floats.push({x:px,y:py-50,txt:'导弹 -1 ♥',l:1,big:false});
+        else if(hr2==='immune')G.floats.push({x:px,y:py-50,txt:'FEVER 无敌！',l:0.7,big:false});
         G.msls.splice(mi,1);continue;}
       if(ms.px<-90||ms.px>W+90)G.msls.splice(mi,1);}
     // 阶段横幅
